@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Orders.Data;
 using Orders.Repositories;
 using Orders.Services;
+using Orders.Services.Pricing;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +30,11 @@ if (builder.Environment.EnvironmentName != "Testing")
 // Dependency Injection
 builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddScoped<IOrderService, OrderService>();
+
+builder.Services.AddTransient<IDiscountStrategy, PremiumLoyaltyDiscount>();
+builder.Services.AddTransient<IDiscountStrategy, StandardLoyaltyDiscount>();
+builder.Services.AddTransient<IDiscountStrategy, BulkOrderDiscount>();
+builder.Services.AddTransient<OrderPricingCalculator>();
 
 var app = builder.Build();
 

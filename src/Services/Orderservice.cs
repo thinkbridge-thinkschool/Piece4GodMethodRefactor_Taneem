@@ -3,6 +3,7 @@ using Orders.Dtos;
 using Orders.Exceptions;
 using Orders.Models;
 using Orders.Repositories;
+using Orders.Services.Pricing;
 
 namespace Orders.Services;
 
@@ -41,11 +42,17 @@ public sealed class OrderService : IOrderService
     private readonly IOrderRepository _repo;
     private readonly ILogger<OrderService> _logger;
 
-    public OrderService(IOrderRepository repo, ILogger<OrderService> logger)
-    {
-        _repo   = repo;
-        _logger = logger;
-    }
+   private readonly OrderPricingCalculator _pricing;
+
+    public OrderService(
+    IOrderRepository repo,
+    ILogger<OrderService> logger,
+    OrderPricingCalculator pricing)
+{
+    _repo    = repo;
+    _logger  = logger;
+    _pricing = pricing;
+}
 
     // ── Query operations ──────────────────────────────────────────────────────
 
@@ -66,8 +73,7 @@ public sealed class OrderService : IOrderService
         var order = await _repo.GetByIdWithItemsAsync(id, ct)
             ?? throw new OrderNotFoundException(id);
 
-        var (discountRate, discountedTotal) = CalculateLoyaltyDiscount(
-            order.CustomerId, order.TotalAmount);
+        var (discountRate, discountedTotal) = _pricing.GetDiscountInfo(order);
 
         await _repo.AddAuditLogAsync(new AuditLog
         {
@@ -92,8 +98,18 @@ public sealed class OrderService : IOrderService
                 $"Customer {request.CustomerId} already has {existingCount} orders " +
                 $"(maximum is {MaxOrdersPerCustomer}).");
 
-        var subtotal = request.Items.Sum(i => i.Price * i.Quantity);
-        var total    = ApplyBulkDiscount(subtotal);
+        var tempOrder = new Order
+    {
+        CustomerId = request.CustomerId,
+        Items = request.Items.Select(i => new OrderItem
+        {
+         ProductId   = i.ProductId,
+            ProductName = i.ProductName,
+            Price       = i.Price,
+            Quantity    = i.Quantity
+         }).ToList()
+    };
+    var total = _pricing.Calculate(tempOrder);
 
         var order = new Order
         {
