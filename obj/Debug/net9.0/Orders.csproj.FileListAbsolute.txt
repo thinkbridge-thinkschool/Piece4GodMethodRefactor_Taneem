@@ -1,0 +1,9 @@
+C:\Users\tanee\Desktop\thinkschool\day-2\Piece4\Orders\obj\Debug\net9.0\Orders.csproj.AssemblyReference.cache
+C:\Users\tanee\Desktop\thinkschool\day-2\Piece4\Orders\obj\Debug\net9.0\rpswa.dswa.cache.json
+C:\Users\tanee\Desktop\thinkschool\day-2\Piece4\Orders\obj\Debug\net9.0\Orders.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\tanee\Desktop\thinkschool\day-2\Piece4\Orders\obj\Debug\net9.0\Orders.AssemblyInfoInputs.cache
+C:\Users\tanee\Desktop\thinkschool\day-2\Piece4\Orders\obj\Debug\net9.0\Orders.AssemblyInfo.cs
+C:\Users\tanee\Desktop\thinkschool\day-2\Piece4\Orders\obj\Debug\net9.0\Orders.csproj.CoreCompileInputs.cache
+C:\Users\tanee\Desktop\thinkschool\day-2\Piece4\Orders\obj\Debug\net9.0\Orders.MvcApplicationPartsAssemblyInfo.cs
+C:\Users\tanee\Desktop\thinkschool\day-2\Piece4\Orders\obj\Debug\net9.0\Orders.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\tanee\Desktop\thinkschool\day-2\Piece4\Orders\obj\Debug\net9.0\Orders.sourcelink.json
