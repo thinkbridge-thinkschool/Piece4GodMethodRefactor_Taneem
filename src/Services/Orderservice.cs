@@ -231,26 +231,6 @@ public sealed class OrderService : IOrderService
 
     // ── Private helpers ───────────────────────────────────────────────────────
 
-    private static decimal ApplyBulkDiscount(decimal subtotal) =>
-        subtotal switch
-        {
-            > BulkTierOneThreshold => subtotal * 0.90m,
-            > BulkTierTwoThreshold => subtotal * 0.95m,
-            _                      => subtotal
-        };
-
-    private static (decimal DiscountRate, decimal DiscountedTotal)
-        CalculateLoyaltyDiscount(int customerId, decimal total)
-    {
-        var rate = customerId switch
-        {
-            > PremiumCustomerThreshold  => 0.10m,
-            > StandardCustomerThreshold => 0.05m,
-            _                           => 0m
-        };
-        return (rate, total - total * rate);
-    }
-
     private async Task IssueRefundAsync(Order order, CancellationToken ct)
     {
         var daysSinceCreation = (DateTimeOffset.UtcNow - order.CreatedAt).TotalDays;
