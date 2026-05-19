@@ -175,8 +175,8 @@ public sealed class StatusValidationTests
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// INTEGRATION TEST
-// WebApplicationFactory
+// INTEGRATION TESTS
+// WebApplicationFactory — all HTTP-level tests in one class
 // ═════════════════════════════════════════════════════════════════════════════
 
 public sealed class OrderIntegrationTests
@@ -213,6 +213,59 @@ public sealed class OrderIntegrationTests
         Assert.NotNull(body);
         Assert.True(body.OrderId > 0);
         Assert.Equal(100m, body.Total);
+    }
+
+    // Test: validation rejects orders with negative quantity
+    [Fact]
+    public async Task CreateOrder_with_negative_quantity_returns_bad_request()
+    {
+        var request = new CreateOrderRequest(
+            CustomerName: "Test User",
+            CustomerId:   1,
+            Items:
+            [
+                new CreateOrderItemRequest(
+                    ProductId:   1,
+                    ProductName: "Keyboard",
+                    Price:       50m,
+                    Quantity:    -1)   // negative quantity
+            ]);
+
+        var response = await _client.PostAsJsonAsync("/api/order", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // Test: order with zero items throws an exception
+    [Fact]
+    public async Task CreateOrder_with_zero_items_returns_bad_request()
+    {
+        var request = new CreateOrderRequest(
+            CustomerName: "Test User",
+            CustomerId:   1,
+            Items:        []);   // no items
+
+        var response = await _client.PostAsJsonAsync("/api/order", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // Test: report returns zero average when there are no orders
+    [Fact]
+    public async Task GetReport_with_no_orders_returns_zero_average()
+    {
+        var from = DateTimeOffset.UtcNow.AddDays(-7);
+        var to   = DateTimeOffset.UtcNow;
+
+        var response = await _client.GetAsync(
+    $"/api/order/report?from={Uri.EscapeDataString(from.ToString("o"))}&to={Uri.EscapeDataString(to.ToString("o"))}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<OrderReportResponse>();
+
+        Assert.NotNull(body);
+        Assert.Equal(0m, body.AverageOrderValue);
     }
 }
 
