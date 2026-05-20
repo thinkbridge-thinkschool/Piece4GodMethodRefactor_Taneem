@@ -1,0 +1,101 @@
+1) Cancellation-aware Service code :
+// Repositories/OrderRepository.cs
+
+public async Task<int> AddAsync(Order order, CancellationToken ct)
+{
+    _db.Orders.Add(order);
+    await _db.SaveChangesAsync(ct);   // ← if client disconnects, this stops
+    return order.Id;
+}
+
+public async Task<Order?> GetByIdAsync(int id, CancellationToken ct) =>
+    await _db.Orders
+        .AsNoTracking()
+        .FirstOrDefaultAsync(o => o.Id == id, ct);   // ← ct passed to EF
+
+public async Task UpdateAsync(Order order, CancellationToken ct)
+{
+    _db.Orders.Update(order);
+    await _db.SaveChangesAsync(ct);   // ← ct passed to EF
+}
+
+public async Task DeleteAsync(Order order, CancellationToken ct)
+{
+    _db.Orders.Remove(order);
+    await _db.SaveChangesAsync(ct);   // ← ct passed to EF
+}
+
+// Controllers/OrderController.cs
+
+[HttpPost]
+public async Task<ActionResult<CreateOrderResponse>> CreateOrder(
+    [FromBody] CreateOrderRequest request,
+    CancellationToken ct)              // ← ASP.NET Core injects this from request abort signal
+{
+    var result = await _service.CreateAsync(request, ct);   // ← flows into service → repo → EF
+    return CreatedAtAction(nameof(GetOrderById), new { id = result.OrderId }, result);
+}
+
+2) Test that proves cancellation is honored.
+// tests/OrderscancellationTest.cs
+
+// Test 1 — cancel before send
+// Token already cancelled — HttpClient throws before request leaves the process
+[Fact]
+public async Task CreateOrder_cancelled_before_send_throws_OperationCanceledException()
+{
+    using var cts = new CancellationTokenSource();
+    await cts.CancelAsync();
+
+    var request = new CreateOrderRequest(
+        CustomerName: "Cancelled Customer",
+        CustomerId:   1,
+        Items: [ new CreateOrderItemRequest(1, "Widget", 10m, 1) ]);
+
+    await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+        _client.PostAsJsonAsync("/api/order", request, cts.Token));
+}
+
+// Test 2 — cancel a GET
+// Reads respect cancellation too, not just writes
+[Fact]
+public async Task GetOrder_cancelled_token_throws_OperationCanceledException()
+{
+    using var cts = new CancellationTokenSource();
+    await cts.CancelAsync();
+
+    await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+        _client.GetAsync("/api/order/1", cts.Token));
+}
+
+// Test 3 — simulate timeout
+// Simulates a client aborting a slow request
+[Fact]
+public async Task CreateOrder_times_out_throws_OperationCanceledException()
+{
+    using var cts = new CancellationTokenSource();
+    await cts.CancelAsync();
+
+    var request = new CreateOrderRequest(
+        CustomerName: "Timeout Customer",
+        CustomerId:   2,
+        Items: [ new CreateOrderItemRequest(1, "Widget", 10m, 1) ]);
+
+    await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+        _client.PostAsJsonAsync("/api/order", request, cts.Token));
+}
+
+// Test 4 — happy path still works
+// Proves cancellation wiring didn't break normal requests
+[Fact]
+public async Task CreateOrder_without_cancellation_returns_201()
+{
+    var request = new CreateOrderRequest(
+        CustomerName: "Normal Customer",
+        CustomerId:   3,
+        Items: [ new CreateOrderItemRequest(1, "Widget", 25m, 2) ]);
+
+    var response = await _client.PostAsJsonAsync("/api/order", request);
+
+    Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+}
