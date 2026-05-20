@@ -13,6 +13,7 @@ using Orders.Exceptions;
 using Orders.Models;
 using Orders.Repositories;
 using Orders.Services;
+using Orders.Services.Pricing;
 using Xunit;
 
 namespace Orders.Tests;
@@ -29,22 +30,30 @@ public sealed class DiscountCalculationTests
     public DiscountCalculationTests()
     {
         var repoMock = new Mock<IOrderRepository>();
-        var logger = new Mock<ILogger<OrderService>>();
+        var logger   = new Mock<ILogger<OrderService>>();
 
-        _sut = new OrderService(repoMock.Object, logger.Object);
+        var strategies = new List<IDiscountStrategy>
+        {
+            new PremiumLoyaltyDiscount(),
+            new StandardLoyaltyDiscount(),
+            new BulkOrderDiscount()
+        };
+        var pricing = new OrderPricingCalculator(strategies);
+
+        _sut = new OrderService(repoMock.Object, logger.Object, pricing);
 
         repoMock
             .Setup(r => r.GetByIdWithItemsAsync(1, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new Order
             {
-                Id = 1,
-                CustomerId = 600,
+                Id           = 1,
+                CustomerId   = 600,
                 CustomerName = "Premium User",
-                TotalAmount = 100m,
-                Status = OrderStatus.Pending,
-                CreatedAt = DateTimeOffset.UtcNow,
-                UpdatedAt = DateTimeOffset.UtcNow,
-                Items = []
+                TotalAmount  = 100m,
+                Status       = OrderStatus.Pending,
+                CreatedAt    = DateTimeOffset.UtcNow,
+                UpdatedAt    = DateTimeOffset.UtcNow,
+                Items        = []
             });
 
         repoMock
@@ -75,12 +84,20 @@ public sealed class ReportAverageTests
     public async Task Average_order_value_divides_by_count()
     {
         var repoMock = new Mock<IOrderRepository>();
-        var logger = new Mock<ILogger<OrderService>>();
+        var logger   = new Mock<ILogger<OrderService>>();
 
-        var sut = new OrderService(repoMock.Object, logger.Object);
+        var strategies = new List<IDiscountStrategy>
+        {
+            new PremiumLoyaltyDiscount(),
+            new StandardLoyaltyDiscount(),
+            new BulkOrderDiscount()
+        };
+        var pricing = new OrderPricingCalculator(strategies);
+
+        var sut = new OrderService(repoMock.Object, logger.Object, pricing);
 
         var from = DateTimeOffset.UtcNow.AddDays(-5);
-        var to = DateTimeOffset.UtcNow;
+        var to   = DateTimeOffset.UtcNow;
 
         repoMock
             .Setup(r => r.GetByDateRangeAsync(
@@ -91,22 +108,21 @@ public sealed class ReportAverageTests
             [
                 new Order
                 {
-                    Id = 1,
-                    CustomerId = 1,
+                    Id          = 1,
+                    CustomerId  = 1,
                     TotalAmount = 100m,
-                    Status = OrderStatus.Pending,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    UpdatedAt = DateTimeOffset.UtcNow
+                    Status      = OrderStatus.Pending,
+                    CreatedAt   = DateTimeOffset.UtcNow,
+                    UpdatedAt   = DateTimeOffset.UtcNow
                 },
-
                 new Order
                 {
-                    Id = 2,
-                    CustomerId = 2,
+                    Id          = 2,
+                    CustomerId  = 2,
                     TotalAmount = 200m,
-                    Status = OrderStatus.Pending,
-                    CreatedAt = DateTimeOffset.UtcNow,
-                    UpdatedAt = DateTimeOffset.UtcNow
+                    Status      = OrderStatus.Pending,
+                    CreatedAt   = DateTimeOffset.UtcNow,
+                    UpdatedAt   = DateTimeOffset.UtcNow
                 }
             ]);
 
@@ -127,9 +143,17 @@ public sealed class StatusValidationTests
     public async Task Invalid_status_throws_exception_before_db_access()
     {
         var repoMock = new Mock<IOrderRepository>();
-        var logger = new Mock<ILogger<OrderService>>();
+        var logger   = new Mock<ILogger<OrderService>>();
 
-        var sut = new OrderService(repoMock.Object, logger.Object);
+        var strategies = new List<IDiscountStrategy>
+        {
+            new PremiumLoyaltyDiscount(),
+            new StandardLoyaltyDiscount(),
+            new BulkOrderDiscount()
+        };
+        var pricing = new OrderPricingCalculator(strategies);
+
+        var sut = new OrderService(repoMock.Object, logger.Object, pricing);
 
         var request = new UpdateOrderRequest("INVALID");
 
@@ -151,8 +175,8 @@ public sealed class StatusValidationTests
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// INTEGRATION TEST
-// WebApplicationFactory
+// INTEGRATION TESTS
+// WebApplicationFactory — all HTTP-level tests in one class
 // ═════════════════════════════════════════════════════════════════════════════
 
 public sealed class OrderIntegrationTests
@@ -170,28 +194,78 @@ public sealed class OrderIntegrationTests
     {
         var request = new CreateOrderRequest(
             CustomerName: "Integration User",
-            CustomerId: 10,
+            CustomerId:   10,
             Items:
             [
                 new CreateOrderItemRequest(
-                    ProductId: 1,
+                    ProductId:   1,
                     ProductName: "Keyboard",
-                    Price: 50m,
-                    Quantity: 2)
+                    Price:       50m,
+                    Quantity:    2)
             ]);
 
-        var response = await _client.PostAsJsonAsync(
-            "/api/order",
-            request);
+        var response = await _client.PostAsJsonAsync("/api/order", request);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
 
-        var body =
-            await response.Content.ReadFromJsonAsync<CreateOrderResponse>();
+        var body = await response.Content.ReadFromJsonAsync<CreateOrderResponse>();
 
         Assert.NotNull(body);
         Assert.True(body.OrderId > 0);
         Assert.Equal(100m, body.Total);
+    }
+
+    // Test: validation rejects orders with negative quantity
+    [Fact]
+    public async Task CreateOrder_with_negative_quantity_returns_bad_request()
+    {
+        var request = new CreateOrderRequest(
+            CustomerName: "Test User",
+            CustomerId:   1,
+            Items:
+            [
+                new CreateOrderItemRequest(
+                    ProductId:   1,
+                    ProductName: "Keyboard",
+                    Price:       50m,
+                    Quantity:    -1)   // negative quantity
+            ]);
+
+        var response = await _client.PostAsJsonAsync("/api/order", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // Test: order with zero items throws an exception
+    [Fact]
+    public async Task CreateOrder_with_zero_items_returns_bad_request()
+    {
+        var request = new CreateOrderRequest(
+            CustomerName: "Test User",
+            CustomerId:   1,
+            Items:        []);   // no items
+
+        var response = await _client.PostAsJsonAsync("/api/order", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // Test: report returns zero average when there are no orders
+    [Fact]
+    public async Task GetReport_with_no_orders_returns_zero_average()
+    {
+        var from = DateTimeOffset.UtcNow.AddDays(-7);
+        var to   = DateTimeOffset.UtcNow;
+
+        var response = await _client.GetAsync(
+    $"/api/order/report?from={Uri.EscapeDataString(from.ToString("o"))}&to={Uri.EscapeDataString(to.ToString("o"))}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<OrderReportResponse>();
+
+        Assert.NotNull(body);
+        Assert.Equal(0m, body.AverageOrderValue);
     }
 }
 

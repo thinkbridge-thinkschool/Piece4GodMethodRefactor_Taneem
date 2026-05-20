@@ -7,6 +7,8 @@ public sealed class Order
     public string CustomerName { get; set; } = string.Empty;
     public decimal TotalAmount { get; set; }          // decimal — not double
     public string  Status      { get; set; } = OrderStatus.Pending;
+
+    public CustomerTier CustomerTier { get; set; } = CustomerTier.None;
     public DateTimeOffset CreatedAt { get; set; }     // UTC-aware
     public DateTimeOffset UpdatedAt { get; set; }
 
@@ -57,3 +59,5 @@ public static class OrderStatus
 
     public static bool IsValid(string status) => All.Contains(status);
 }
+
+public enum CustomerTier { None, Standard, Premium }

@@ -1,0 +1,2 @@
+Initial Prompt :
+write me a asp.net core 10 minimal api code for OrderController.cs. The code must be 300 lines. It must be delibrately bad code where all the action mixes business logic + EF data access + validation + HTTP shape inline; four empty `catch { }` blocks swallowing exceptions; synchronous EF calls inside an `async` action; returns `object` instead of typed responses; zero tests; a couple of subtle bugs (off-by-one, null deref).
